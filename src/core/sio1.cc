@@ -21,17 +21,17 @@
 
 void PCSX::SIO1::interrupt() {
     SIO1_LOG("SIO1 Interrupt (CP0.Status = %x)\n", PCSX::g_emulator->m_psxCpu->m_psxRegs.CP0.n.Status);
-    m_statusReg |= SR_IRQ;
-    psxHu32ref(0x1070) |= SWAP_LEu32(0x100);
+    SIO1_STAT |= SWAP_LEu32(SR_IRQ);
+    I_STAT |= SWAP_LEu16(IRQ8_SIO);
 }
 
 uint8_t PCSX::SIO1::readData8() {
     uint8_t ret = 0;
 
-    if (m_statusReg & SR_RXRDY) {
+    if (SIO1_STAT & SWAP_LEu32(SR_RXRDY)) {
         ret = m_slices.getByte();
         readStat8();
-        psxHu8(0x1050) = ret;
+        SIO1_DATA = ret;
     }
 
     return ret;
@@ -39,111 +39,77 @@ uint8_t PCSX::SIO1::readData8() {
 
 uint8_t PCSX::SIO1::readStat8() {
     updateStat();
-    return m_statusReg & 0xFF;
+    return SIO1_STAT & 0xFF;
 }
 
 uint16_t PCSX::SIO1::readStat16() {
     updateStat();
-    return m_statusReg & 0xFFFF;
+    return SIO1_STAT & 0xFFFF;
 }
 
 uint32_t PCSX::SIO1::readStat32() {
     updateStat();
-    return m_statusReg;
+    return SIO1_STAT;
 }
 
 void PCSX::SIO1::receiveCallback() {
-    if (m_ctrlReg & CR_RXIRQEN) {
-        if (!(m_statusReg & SR_IRQ)) {
+    if (SIO1_CTRL & SWAP_LEu16(CR_RXIRQEN)) {
+        if (!(SIO1_STAT & SWAP_LEu32(SR_IRQ))) {
             scheduleInterrupt(SIO1_CYCLES);
-            m_statusReg |= SR_IRQ;
+            SIO1_STAT |= SWAP_LEu32(SR_IRQ);
         }
     }
 }
 
 void PCSX::SIO1::updateStat() {
     if (m_slices.m_sliceQueue.empty()) {
-        m_statusReg &= ~SR_RXRDY;
+        SIO1_STAT &= SWAP_LEu32(~SR_RXRDY);
     } else {
-        m_statusReg |= SR_RXRDY;
+        SIO1_STAT |= SWAP_LEu32(SR_RXRDY);
     }
-    psxHu32(0x1054) = m_statusReg;
 }
 
-void PCSX::SIO1::writeBaud16(uint16_t v) {
-    m_baudReg = v;
-    psxHu16(0x105E) = m_baudReg;
-}
+void PCSX::SIO1::writeBaud16(uint16_t v) { SIO1_BAUD = SWAP_LEu16(v); }
 
 void PCSX::SIO1::writeCtrl16(uint16_t v) {
-    m_ctrlReg = v;
-    if (m_ctrlReg & CR_ACK) {
-        m_ctrlReg &= ~CR_ACK;
-        psxHu16(0x105A) = m_ctrlReg;
+    SIO1_CTRL = v;
 
-        m_statusReg &= ~(SR_PARITYERR | SR_RXOVERRUN | SR_FRAMINGERR | SR_IRQ);
-        psxHu32(0x1054) = m_statusReg;
+    if (SIO1_CTRL & SWAP_LEu16(CR_ACK)) {
+        SIO1_CTRL &= SWAP_LEu16(~CR_ACK);
+        SIO1_STAT &= SWAP_LEu32(~(SR_PARITYERR | SR_RXOVERRUN | SR_FRAMINGERR | SR_IRQ));
     }
 
-    if (m_ctrlReg & CR_ACK) {
-        m_ctrlReg &= ~CR_ACK;
-        m_statusReg &= ~(SR_PARITYERR | SR_RXOVERRUN | SR_FRAMINGERR | SR_IRQ);
-    }
-
-    if (m_ctrlReg & CR_RESET) {
-        m_statusReg &= ~SR_IRQ;
-        m_statusReg |= SR_TXRDY | SR_TXEMPTY;
-        psxHu32(0x1054) = m_statusReg;
-
-        m_modeReg = 0;
-        psxHu16(0x1058) = m_modeReg;
-
-        m_ctrlReg = 0;
-        psxHu16(0x105A) = m_ctrlReg;
-
-        m_baudReg = 0;
-        psxHu16(0x105E) = m_baudReg;
+    if (SIO1_CTRL & SWAP_LEu16(CR_RESET)) {
+        SIO1_STAT &= SWAP_LEu32(~SR_IRQ);
+        SIO1_STAT |= SWAP_LEu32(SR_TXRDY | SR_TXRDY2);
+        SIO1_MODE = 0;
+        SIO1_CTRL = 0;
+        SIO1_BAUD = 0;
 
         PCSX::g_emulator->m_psxCpu->m_psxRegs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 }
 
 void PCSX::SIO1::writeData8(uint8_t v) {
-    psxHu8(0x1050) = v;
+    SIO1_DATA = v;
     PCSX::g_emulator->m_sio1Server->write(v);
 
-    if (m_ctrlReg & CR_TXIRQEN) {
-        if (!(m_statusReg & SR_IRQ)) {
+    if ((SIO1_CTRL & SWAP_LEu16(CR_TXIRQEN)) && (SIO1_STAT & SWAP_LEu32(SR_CTS)) && (SIO1_STAT & SWAP_LEu32(SR_TXRDY2))) {
+        if (!(SIO1_STAT & SWAP_LEu32(SR_IRQ))) {
             scheduleInterrupt(SIO1_CYCLES);
-            m_statusReg |= SR_IRQ;
+            SIO1_STAT |= SWAP_LEu32(SR_IRQ);
         }
     }
 
-    m_statusReg |= SR_TXRDY | SR_TXEMPTY;
-    psxHu32(0x1054) = m_statusReg;
+    SIO1_STAT |= SWAP_LEu32(SR_TXRDY | SR_TXRDY2);
 }
 
-void PCSX::SIO1::writeMode8(uint8_t v) {
-    m_modeReg = v;
-    psxHu16(0x1058) = v;
-}
+void PCSX::SIO1::writeMode8(uint8_t v) { SIO1_MODE = v; }
 
-void PCSX::SIO1::writeMode16(uint16_t v) {
-    m_modeReg = v;
-    psxHu16(0x1058) = v;
-}
+void PCSX::SIO1::writeMode16(uint16_t v) { SIO1_MODE = SWAP_LEu16(v); }
 
-void PCSX::SIO1::writeStat8(uint8_t v) {
-    m_statusReg = v;
-    psxHu32(0x1054) = m_statusReg;
-}
+void PCSX::SIO1::writeStat8(uint8_t v) { SIO1_STAT = v; }
 
-void PCSX::SIO1::writeStat16(uint16_t v) {
-    m_statusReg = v;
-    psxHu32(0x1054) = m_statusReg;
-}
+void PCSX::SIO1::writeStat16(uint16_t v) { SIO1_STAT = SWAP_LEu16(v); }
 
-void PCSX::SIO1::writeStat32(uint32_t v) {
-    m_statusReg = v;
-    psxHu32(0x1054) = m_statusReg;
-}
+void PCSX::SIO1::writeStat32(uint32_t v) { SIO1_STAT = SWAP_LEu32(v); }
