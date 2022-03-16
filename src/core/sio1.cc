@@ -31,7 +31,7 @@ uint8_t PCSX::SIO1::readData8() {
 
     if (SIO1_STAT & SWAP_LEu32(SR_RXRDY)) {
         ret = m_slices.getByte();
-        readStat8();
+        updateStat();
         SIO1_DATA = ret;
     }
 
