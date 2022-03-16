@@ -23,10 +23,11 @@ void PCSX::SIO1::interrupt() {
     SIO1_LOG("SIO1 Interrupt (CP0.Status = %x)\n", PCSX::g_emulator->m_psxCpu->m_psxRegs.CP0.n.Status);
     SIO1_STAT |= SWAP_LEu32(SR_IRQ);
     I_STAT |= SWAP_LEu16(IRQ8_SIO);
+    if (!m_slices.m_sliceQueue.empty() && m_slices.getBytesRemaining() > 1) scheduleInterrupt(SIO1_CYCLES);
 }
 
 uint8_t PCSX::SIO1::readData8() {
-    uint8_t ret = 0;
+    uint8_t ret;
 
     if (SIO1_STAT & SWAP_LEu32(SR_RXRDY)) {
         ret = m_slices.getByte();
