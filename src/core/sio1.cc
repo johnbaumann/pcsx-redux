@@ -23,7 +23,7 @@ void PCSX::SIO1::interrupt() {
     SIO1_LOG("SIO1 Interrupt (CP0.Status = %x)\n", PCSX::g_emulator->m_psxCpu->m_psxRegs.CP0.n.Status);
     SIO1_STAT |= SWAP_LEu32(SR_IRQ);
     I_STAT |= SWAP_LEu16(IRQ8_SIO);
-    if (!m_slices.m_sliceQueue.empty() && m_slices.getBytesRemaining() > 1) scheduleInterrupt(SIO1_CYCLES);
+    if (!m_slices.m_sliceQueueRX.empty() && m_slices.getBytesRemaining() > 1) scheduleInterrupt(SIO1_CYCLES);
 }
 
 uint8_t PCSX::SIO1::readData8() {
@@ -63,7 +63,7 @@ void PCSX::SIO1::receiveCallback() {
 }
 
 void PCSX::SIO1::updateStat() {
-    if (m_slices.m_sliceQueue.empty()) {
+    if (m_slices.m_sliceQueueRX.empty()) {
         SIO1_STAT &= SWAP_LEu32(~SR_RXRDY);
     } else {
         SIO1_STAT |= SWAP_LEu32(SR_RXRDY);
@@ -92,8 +92,8 @@ void PCSX::SIO1::writeCtrl16(uint16_t v) {
 }
 
 void PCSX::SIO1::writeData8(uint8_t v) {
-    SIO1_DATA = v;
     PCSX::g_emulator->m_sio1Server->write(v);
+    fifo.Push(v);
 
     if ((SIO1_CTRL & SWAP_LEu16(CR_TXIRQEN)) && (SIO1_STAT & SWAP_LEu32(SR_CTS)) && (SIO1_STAT & SWAP_LEu32(SR_TXRDY2))) {
         if (!(SIO1_STAT & SWAP_LEu32(SR_IRQ))) {

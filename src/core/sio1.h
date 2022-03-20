@@ -140,87 +140,67 @@ class SIO1 {
         IRQ8_SIO = 0x100
     };
 
+    template <size_t buffer_size, typename T>
+    class FIFO {
+      public:
+        ~FIFO() { Empty(); }
+
+        void Empty() { queue_.empty(); }
+        T Pull() {
+            T ret = T();
+            if (!queue_.empty()) {
+                ret = queue_.front();
+                queue_.pop();
+            }
+
+            return ret;
+        }
+        void Push(T data) {
+            if (queue_.size() >= buffer_size) {
+                queue_.back() = data;
+            } else {
+                queue_.push(data);
+            }
+        }
+
+        T BytesAvailable() { return queue_.size(); }
+
+      private:
+        std::queue<T> queue_;
+    };
+
+    FIFO<8, uint8_t> fifo;
+
     struct Slices {
         ~Slices() { discardSlices(); }
 
         void discardSlices() {
-            while (!m_sliceQueue.empty()) m_sliceQueue.pop();
+            while (!m_sliceQueueRX.empty()) m_sliceQueueRX.pop();
         }
-        void pushSlice(const Slice& slice) { m_sliceQueue.push(slice); }
+        void pushSlice(const Slice& slice) { m_sliceQueueRX.push(slice); }
 
         uint8_t getByte() {
-            if (m_sliceQueue.empty()) return 0xff;  // derp?
-            Slice& slice = m_sliceQueue.front();
+            if (m_sliceQueueRX.empty()) return 0xff;  // derp?
+            Slice& slice = m_sliceQueueRX.front();
             uint8_t r = slice.getByte(m_cursor);
             if (++m_cursor >= slice.size()) {
                 m_cursor = 0;
-                m_sliceQueue.pop();
+                m_sliceQueueRX.pop();
             }
             return r;
         }
 
         uint32_t getBytesRemaining() {
-            Slice& slice = m_sliceQueue.front();
-            
-            if (m_sliceQueue.empty()) return 0;
+            Slice& slice = m_sliceQueueRX.front();
+
+            if (m_sliceQueueRX.empty()) return 0;
 
             return slice.size() - m_cursor;
         }
 
-        std::queue<Slice> m_sliceQueue;
+        std::queue<Slice> m_sliceQueueRX;
+
         uint32_t m_cursor = 0;
-    };
-
-template <size_t address, typename T>
-    struct HardwareRegister {
-        operator T() { return get(); }
-        HardwareRegister& operator=(T val) {
-            get() = val;
-            return *this;
-        }
-        HardwareRegister& operator+=(T val) {
-            get() += val;
-            return *this;
-        }
-        HardwareRegister& operator-=(T val) {
-            get() -= val;
-            return *this;
-        }
-        HardwareRegister& operator*=(T val) {
-            get() *= val;
-            return *this;
-        }
-        HardwareRegister& operator/=(T val) {
-            get() /= val;
-            return *this;
-        }
-        HardwareRegister& operator%=(T val) {
-            get() %= val;
-            return *this;
-        }
-        HardwareRegister& operator&=(T val) {
-            get() &= val;
-            return *this;
-        }
-        HardwareRegister& operator|=(T val) {
-            get() |= val;
-            return *this;
-        }
-        HardwareRegister& operator^=(T val) {
-            get() ^= val;
-            return *this;
-        }
-        HardwareRegister& operator<<=(T val) {
-            get() <<= val;
-            return *this;
-        }
-        HardwareRegister& operator>>=(T val) {
-            get() >>= val;
-            return *this;
-        }
-
-      private:
-        T& get() { return *reinterpret_cast<T*>(&PCSX::g_emulator->m_psxMem->g_psxH[(address)&0xffff]); }
     };
 
     inline void scheduleInterrupt(uint32_t eCycle) { g_emulator->m_psxCpu->scheduleInterrupt(PSXINT_SIO1, eCycle); }
@@ -229,12 +209,12 @@ template <size_t address, typename T>
 
     Slices m_slices;
 
-    HardwareRegister<0x1050, uint32_t> SIO1_DATA;
-    HardwareRegister<0x1054, uint32_t> SIO1_STAT;
-    HardwareRegister<0x1058, uint16_t> SIO1_MODE;
-    HardwareRegister<0x105A, uint16_t> SIO1_CTRL;
-    HardwareRegister<0x105C, uint16_t> SIO1_MISC;
-    HardwareRegister<0x105E, uint16_t> SIO1_BAUD;
-    HardwareRegister<0x1070, uint16_t> I_STAT;
+    uint32_t SIO1_DATA;
+    uint32_t SIO1_STAT;
+    uint16_t SIO1_MODE;
+    uint16_t SIO1_CTRL;
+    uint16_t SIO1_MISC;
+    uint16_t SIO1_BAUD;
+    uint16_t I_STAT;
 };
 }  // namespace PCSX
