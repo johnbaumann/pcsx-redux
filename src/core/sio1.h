@@ -50,12 +50,15 @@ class SIO1 {
 
     void sio1Reset() {
         m_slices.discardSlices();
-        // uint32_t m_dataReg = 0;
-        SIO1_STAT = SWAP_LEu32(SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS);
+        fifo_rx.Empty();
+        SIO1_DATA = 0;
+        SIO1_STAT = (SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS);
         SIO1_MODE = 0;
         SIO1_CTRL = 0;
         SIO1_MISC = 0;
         SIO1_BAUD = 0;
+
+        PCSX::g_emulator->m_psxCpu->m_psxRegs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 
     uint8_t readBaud8() { return SIO1_BAUD & 0xFF; }
@@ -163,13 +166,11 @@ class SIO1 {
             }
         }
 
-        T BytesAvailable() { return queue_.size(); }
+        size_t BytesAvailable() { return queue_.size(); }
 
       private:
         std::queue<T> queue_;
     };
-
-    FIFO<8, uint8_t> fifo;
 
     struct Slices {
         ~Slices() { discardSlices(); }
@@ -205,9 +206,13 @@ class SIO1 {
 
     inline void scheduleInterrupt(uint32_t eCycle) { g_emulator->m_psxCpu->scheduleInterrupt(PSXINT_SIO1, eCycle); }
 
-    void updateStat();
+    void UpdateFIFO();
+    void UpdateStat();
+    void TransmitData();
+    bool TransmitReady();
 
     Slices m_slices;
+    FIFO<8, uint8_t> fifo_rx;
 
     uint32_t SIO1_DATA;
     uint32_t SIO1_STAT;
@@ -215,6 +220,6 @@ class SIO1 {
     uint16_t SIO1_CTRL;
     uint16_t SIO1_MISC;
     uint16_t SIO1_BAUD;
-    uint16_t I_STAT;
+    //uint16_t I_STAT;
 };
 }  // namespace PCSX
