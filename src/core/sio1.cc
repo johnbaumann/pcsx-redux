@@ -21,164 +21,154 @@
 
 void PCSX::SIO1::interrupt() {
     SIO1_LOG("SIO1 Interrupt (CP0.Status = %x)\n", PCSX::g_emulator->m_psxCpu->m_psxRegs.CP0.n.Status);
-    SIO1_STAT |= SR_IRQ;
+    m_statusReg |= SR_IRQ;
     psxHu32ref(0x1070) |= SWAP_LEu32(IRQ8_SIO);
-    if (fifo_rx.BytesAvailable() > 1) scheduleInterrupt(SIO1_CYCLES);
+    if (fifo_rx.bytesAvailable() > 1) scheduleInterrupt(SIO1_CYCLES);
 }
 
 uint8_t PCSX::SIO1::readData8() {
-    uint8_t ret = 0;
-
-    UpdateStat();
-    psxHu8(0x1050) = ret;
-    if (SIO1_STAT & SR_RXRDY) {
-        ret = fifo_rx.Pull();
-        SIO1_DATA = ret;
+    updateStat();
+    if (m_statusReg & SR_RXRDY) {
+        m_dataReg = fifo_rx.pull();
+        psxHu8(0x1050) = m_dataReg;
     }
-    UpdateStat();
+    updateStat();
 
-    return ret;
+    return m_dataReg;
 }
 
 uint8_t PCSX::SIO1::readStat8() {
-    UpdateStat();
-    return SIO1_STAT & 0xFF;
+    updateStat();
+    return m_statusReg & 0xFF;
 }
 
 uint16_t PCSX::SIO1::readStat16() {
-    UpdateStat();
-    return SIO1_STAT & 0xFFFF;
+    updateStat();
+    return m_statusReg & 0xFFFF;
 }
 
 uint32_t PCSX::SIO1::readStat32() {
-    UpdateStat();
-    return SIO1_STAT;
+    updateStat();
+    return m_statusReg;
 }
 
 void PCSX::SIO1::receiveCallback() {
     bool do_interrupt = false;
 
-    UpdateStat();
+    updateStat();
 
-    if (SIO1_CTRL & CR_RXIRQEN) {
-        if (!(SIO1_STAT & SR_IRQ)) {
-            switch ((SIO1_CTRL & 0x300) >> 8) {
+    if (m_ctrlReg & CR_RXIRQEN) {
+        if (!(m_statusReg & SR_IRQ)) {
+            switch ((m_ctrlReg & 0x300) >> 8) {
                 case 0:
-                    if (fifo_rx.BytesAvailable() >= 1) do_interrupt = true;
+                    if (fifo_rx.bytesAvailable() >= 1) do_interrupt = true;
                     break;
 
                 case 1:
-                    if (fifo_rx.BytesAvailable() >= 2) do_interrupt = true;
+                    if (fifo_rx.bytesAvailable() >= 2) do_interrupt = true;
                     break;
 
                 case 2:
-                    if (fifo_rx.BytesAvailable() >= 4) do_interrupt = true;
+                    if (fifo_rx.bytesAvailable() >= 4) do_interrupt = true;
                     break;
 
                 case 3:
-                    if (fifo_rx.BytesAvailable() >= 8) do_interrupt = true;
+                    if (fifo_rx.bytesAvailable() >= 8) do_interrupt = true;
                     break;
             }
 
             if (do_interrupt) {
                 scheduleInterrupt(SIO1_CYCLES);
-                SIO1_STAT |= SR_IRQ;
+                m_statusReg |= SR_IRQ;
             }
         }
     }
 }
 
-void PCSX::SIO1::TransmitData() {
-    PCSX::g_emulator->m_sio1Server->write(SIO1_DATA);
-    if (SIO1_CTRL & CR_TXIRQEN) {
-        if (SIO1_STAT & SR_TXRDY || SIO1_STAT & SR_TXRDY2) {
-            if (!(SIO1_STAT & SR_IRQ)) {
+void PCSX::SIO1::transmitData() {
+    PCSX::g_emulator->m_sio1Server->write(m_dataReg);
+    if (m_ctrlReg & CR_TXIRQEN) {
+        if (m_statusReg & SR_TXRDY || m_statusReg & SR_TXRDY2) {
+            if (!(m_statusReg & SR_IRQ)) {
                 scheduleInterrupt(SIO1_CYCLES);
-                SIO1_STAT |= SWAP_LEu32(SR_IRQ);
+                m_statusReg |= SWAP_LEu32(SR_IRQ);
             }
         }
     }
 }
 
-bool PCSX::SIO1::TransmitReady() { return (SIO1_CTRL & CR_TXEN) && (SIO1_STAT & SR_CTS) && (SIO1_STAT & SR_TXRDY2); }
+bool PCSX::SIO1::isTransmitReady() { return (m_ctrlReg & CR_TXEN) && (m_statusReg & SR_CTS) && (m_statusReg & SR_TXRDY2); }
 
-void PCSX::SIO1::UpdateFIFO() {
+void PCSX::SIO1::updateFIFO() {
     // Grab incoming bytes and stash them in fifo
     // 
     // dirty hack, nops sends more than 8 bytes at a time so make sure not to overflow fifo
     // this prevents implementing STAT.4 RX FIFO Overrun
-    while (!m_slices.m_sliceQueueRX.empty() && fifo_rx.BytesAvailable() < 8) {
-        fifo_rx.Push(m_slices.getByte());
+    while (!m_slices.m_sliceQueueRX.empty() && fifo_rx.bytesAvailable() < 8) {
+        fifo_rx.push(m_slices.getByte());
     }
 }
 
-void PCSX::SIO1::UpdateStat() {
-    UpdateFIFO(); // dirty hack. slices can be > fifo size, so need to check for more data
+void PCSX::SIO1::updateStat() {
+    updateFIFO(); // dirty hack. slices can be > fifo size, so need to check for more data
 
-    if (fifo_rx.BytesAvailable() > 0) {
-        SIO1_STAT |= SR_RXRDY;
+    if (fifo_rx.bytesAvailable() > 0) {
+        m_statusReg |= SR_RXRDY;
     } else {
-        SIO1_STAT &= ~SR_RXRDY;
+        m_statusReg &= ~SR_RXRDY;
     }
 
-    psxHu32ref(0x1054) = SWAP_LEu32(SIO1_STAT);
+    psxHu32ref(0x1054) = SWAP_LEu32(m_statusReg);
 }
-void PCSX::SIO1::writeBaud16(uint16_t v) { SIO1_BAUD = v; }
+void PCSX::SIO1::writeBaud16(uint16_t v) {
+    m_baudReg = v;
+    psxHu8ref(0x105E) = m_baudReg;
+}
 
 void PCSX::SIO1::writeCtrl16(uint16_t v) {
-    uint16_t old_ctrl = SIO1_CTRL;
-    SIO1_CTRL = v;
-    if (!(old_ctrl & CR_TXEN) && (SIO1_CTRL & CR_TXEN)) {
-        if (TransmitReady()) {
-            TransmitData();
+    uint16_t old_ctrl = m_ctrlReg;
+    m_ctrlReg = v;
+    if (!(old_ctrl & CR_TXEN) && (m_ctrlReg & CR_TXEN)) {
+        if (isTransmitReady()) {
+            transmitData();
         }
     }
 
-    if (SIO1_CTRL & CR_ACK) {
-        SIO1_CTRL &= ~CR_ACK;
-        SIO1_STAT &= ~(SR_PARITYERR | SR_RXOVERRUN | SR_FRAMINGERR | SR_IRQ);
+    if (m_ctrlReg & CR_ACK) {
+        m_ctrlReg &= ~CR_ACK;
+        m_statusReg &= ~(SR_PARITYERR | SR_RXOVERRUN | SR_FRAMINGERR | SR_IRQ);
     }
 
-    if (SIO1_CTRL & CR_RESET) {
-        SIO1_STAT &= ~SR_IRQ;
-        SIO1_STAT |= (SR_TXRDY | SR_TXRDY2);
-        SIO1_MODE = 0;
-        SIO1_CTRL = 0;
-        SIO1_BAUD = 0;
+    if (m_ctrlReg & CR_RESET) {
+        m_statusReg &= ~SR_IRQ;
+        m_statusReg |= (SR_TXRDY | SR_TXRDY2);
+        m_modeReg = 0;
+        m_ctrlReg = 0;
+        m_baudReg = 0;
 
         PCSX::g_emulator->m_psxCpu->m_psxRegs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
+
+    psxHu16ref(0x105A) = SWAP_LE16(m_ctrlReg);
 }
 
 void PCSX::SIO1::writeData8(uint8_t v) {
-    SIO1_DATA = v;
+    m_dataReg = v;
 
-    if (TransmitReady()) {
-        TransmitData();
+    if (isTransmitReady()) {
+        transmitData();
     }
+
+    psxHu8ref(0x1050) = m_dataReg;
 }
 
-void PCSX::SIO1::writeMode8(uint8_t v) { SIO1_MODE = v; }
-
-void PCSX::SIO1::writeMode16(uint16_t v) { SIO1_MODE = v; }
-
-void PCSX::SIO1::writeStat8(uint8_t v) {
-    SIO1_STAT = v;
-    if (TransmitReady()) {
-        TransmitData();
-    }
-}
-
-void PCSX::SIO1::writeStat16(uint16_t v) {
-    SIO1_STAT = v;
-    if (TransmitReady()) {
-        TransmitData();
-    }
-}
+void PCSX::SIO1::writeMode16(uint16_t v) { m_modeReg = v; }
 
 void PCSX::SIO1::writeStat32(uint32_t v) {
-    SIO1_STAT = v;
-    if (TransmitReady()) {
-        TransmitData();
+    m_statusReg = v;
+    if (isTransmitReady()) {
+        transmitData();
     }
+    psxHu32ref(0x1054) = SWAP_LE32(m_statusReg);
+
 }
