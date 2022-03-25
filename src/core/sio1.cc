@@ -20,7 +20,7 @@
 #include "core/sio1.h"
 
 void PCSX::SIO1::interrupt() {
-    SIO1_LOG("SIO1 Interrupt (CP0.Status = %x)\n", PCSX::g_emulator->m_psxCpu->m_psxRegs.CP0.n.Status);
+    SIO1_LOG("SIO1 Interrupt (CP0.Status = %x)\n", PCSX::g_emulator->m_cpu->m_regs.CP0.n.Status);
     m_statusReg |= SR_IRQ;
     psxHu32ref(0x1070) |= SWAP_LEu32(IRQ8_SIO);
     if (fifo_rx.bytesAvailable() > 1) scheduleInterrupt(SIO1_CYCLES);
@@ -146,7 +146,7 @@ void PCSX::SIO1::writeCtrl16(uint16_t v) {
         m_ctrlReg = 0;
         m_baudReg = 0;
 
-        PCSX::g_emulator->m_psxCpu->m_psxRegs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
+        PCSX::g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 
     psxHu16ref(0x105A) = SWAP_LE16(m_ctrlReg);
