@@ -27,10 +27,19 @@
 #include "core/sio1-server.h"
 #include "core/sstate.h"
 
-//#define SIO1_CYCLES (m_baudReg * 8)
+//#define SIO1_CYCLES (m_regs.baud * 8)
 #define SIO1_CYCLES (1)
 
 namespace PCSX {
+
+struct sio1Registers {
+    uint32_t data;
+    uint32_t status;
+    uint16_t mode;
+    uint16_t control;
+    uint16_t baud;
+};
+
 class SIO1 {
     /*
      * To-do:
@@ -51,27 +60,27 @@ class SIO1 {
     void reset() {
         m_slices.discardSlices();
         fifo_rx.empty();
-        m_dataReg = 0;
-        m_statusReg = (SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS);
-        m_modeReg = 0;
-        m_ctrlReg = 0;
-        m_baudReg = 0;
+        m_regs.data = 0;
+        m_regs.status = (SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS);
+        m_regs.mode = 0;
+        m_regs.control = 0;
+        m_regs.baud = 0;
 
         PCSX::g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 
-    uint8_t readBaud8() { return m_baudReg & 0xFF; }
-    uint16_t readBaud16() { return m_baudReg; }
+    uint8_t readBaud8() { return m_regs.baud & 0xFF; }
+    uint16_t readBaud16() { return m_regs.baud; }
 
-    uint8_t readCtrl8() { return m_ctrlReg & 0xFF; }
-    uint16_t readCtrl16() { return m_ctrlReg; }
+    uint8_t readCtrl8() { return m_regs.control & 0xFF; }
+    uint16_t readCtrl16() { return m_regs.control; }
 
     uint8_t readData8();
     uint16_t readData16() { return psxHu16(0x1050); }
     uint32_t readData32() { return psxHu32(0x1050); }
 
-    uint8_t readMode8() { return m_modeReg & 0xFF; }
-    uint16_t readMode16() { return m_modeReg; }
+    uint8_t readMode8() { return m_regs.mode & 0xFF; }
+    uint16_t readMode16() { return m_regs.mode; }
 
     uint8_t readStat8();
     uint16_t readStat16();
@@ -105,6 +114,8 @@ class SIO1 {
     void receiveCallback();
 
     void pushSlice(Slice slice) { m_slices.pushSlice(slice); }
+
+    sio1Registers m_regs;
 
   private:
     enum {
@@ -213,11 +224,11 @@ class SIO1 {
     void transmitData();
     bool isTransmitReady();
 
-    uint32_t m_dataReg;
-    uint32_t m_statusReg = SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS;
-    uint16_t m_modeReg;
-    uint16_t m_ctrlReg;
-    uint16_t m_baudReg;
+    //uint32_t m_regs.data;
+    //uint32_t m_regs.status = SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS;
+    //uint16_t m_regs.mode;
+    //uint16_t m_regs.control;
+    //uint16_t m_regs.baud;
     Slices m_slices;
     FIFO<8, uint8_t> fifo_rx;
 };
