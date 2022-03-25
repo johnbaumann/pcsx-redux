@@ -57,7 +57,7 @@ class SIO1 {
         m_ctrlReg = 0;
         m_baudReg = 0;
 
-        PCSX::g_emulator->m_psxCpu->m_psxRegs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
+        PCSX::g_emulator->m_cpu->m_regs.interrupt &= ~(1 << PCSX::PSXINT_SIO1);
     }
 
     uint8_t readBaud8() { return m_baudReg & 0xFF; }
