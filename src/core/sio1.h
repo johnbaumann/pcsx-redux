@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
 
 #include "core/psxemulator.h"
@@ -224,11 +225,6 @@ class SIO1 {
     void transmitData();
     bool isTransmitReady();
 
-    //uint32_t m_regs.data;
-    //uint32_t m_regs.status = SR_TXRDY | SR_TXRDY2 | SR_DSR | SR_CTS;
-    //uint16_t m_regs.mode;
-    //uint16_t m_regs.control;
-    //uint16_t m_regs.baud;
     Slices m_slices;
     FIFO<8, uint8_t> fifo_rx;
 };
