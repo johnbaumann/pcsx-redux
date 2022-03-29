@@ -34,6 +34,10 @@ class SIO1 {
     bool m_show = false;
 
   private:
+    void DrawControlEditor(PCSX::sio1Registers* regs);
+    void DrawModeEditor(PCSX::sio1Registers* regs);
+    void DrawStatusEditor(PCSX::sio1Registers* regs);
+
     char m_registerEditor[20];
 };
 
