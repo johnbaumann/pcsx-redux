@@ -60,10 +60,11 @@ typedef Protobuf::Field<Protobuf::Int32, TYPESTRING("release_mode_exp"), 9> exRe
 typedef Protobuf::Field<Protobuf::Int32, TYPESTRING("release_rate"), 10> exReleaseRate;
 typedef Protobuf::Field<Protobuf::Int32, TYPESTRING("envelope_vol"), 11> exEnvelopeVol;
 typedef Protobuf::Field<Protobuf::Int32, TYPESTRING("volume"), 12> exVolume;
+typedef Protobuf::Field<Protobuf::Int32, TYPESTRING("envelope_vol_f"), 13> exEnvelopeVol_f;
 
 typedef Protobuf::Message<TYPESTRING("ADSRInfoEx"), exState, exAttackModeExp, exAttackRate, exDecayRate, exSustainLevel,
                           exSustainModeExp, exSustainIncrease, exSustainRate, exReleaseModeExp, exReleaseRate,
-                          exEnvelopeVol, exVolume>
+                          exEnvelopeVol, exVolume, exEnvelopeVol_f>
     ADSRInfoEx;
 
 namespace Chan {
