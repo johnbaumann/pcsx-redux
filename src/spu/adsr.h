@@ -47,6 +47,11 @@ class ADSR {
         -0x1B + 9 + 32, -0x1B + 10 + 32, -0x1B + 11 + 32, -0x1B + 12 + 32,
     };
 
+    int Attack(SPUCHAN* ch);
+    int Decay(SPUCHAN* ch);
+    int Sustain(SPUCHAN* ch);
+    int Release(SPUCHAN* ch);
+
     class Table {
       public:
         Table();

@@ -92,7 +92,7 @@ void PCSX::SPU::impl::writeRegister(uint32_t reg, uint16_t val) {
                 s_chan[ch].ADSRX.get<exAttackModeExp>().value = (val & 0x8000) ? 1 : 0;
                 s_chan[ch].ADSRX.get<exAttackRate>().value = ((val >> 8) & 0x007f) ^ 0x7f;
                 s_chan[ch].ADSRX.get<exDecayRate>().value = 4 * (((val >> 4) & 0x000f) ^ 0x1f);
-                s_chan[ch].ADSRX.get<exSustainLevel>().value = (val & 0x000f) << 27;
+                s_chan[ch].ADSRX.get<exSustainLevel>().value = (val & 0x000f);
                 //---------------------------------------------// stuff below is only for debug mode
 
                 s_chan[ch].ADSR.get<AttackModeExp>().value = (val & 0x8000) ? 1 : 0;  // 0x007f
@@ -195,6 +195,8 @@ void PCSX::SPU::impl::writeRegister(uint32_t reg, uint16_t val) {
 
         case H_SPUctrl:
             spuCtrl = val;
+
+            dwNoiseClock = (spuCtrl & 0x3f00) >> 8;
             break;
 
         case H_SPUstat:

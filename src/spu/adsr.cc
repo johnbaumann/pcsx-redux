@@ -38,12 +38,285 @@
 #include "spu/externals.h"
 #include "spu/interface.h"
 
-#define REDUX_SPU 0
-#define PEOPS_SPU 1
-
 static int32_t RateTableAdd[128];
 static int32_t RateTableSub[128];
 static int32_t RateTable_denom[128];
+
+int PCSX::SPU::ADSR::Attack(SPUCHAN* ch) {
+    uint32_t disp;
+    int rate;
+    int32_t EnvelopeVol = ch->ADSRX.get<exEnvelopeVol>().value;
+    int32_t EnvelopeVol_f = ch->ADSRX.get<exEnvelopeVol_f>().value;
+    int32_t reduxEnvelopeVol = EnvelopeVol;
+    int32_t peopsEnvelopeVol = (EnvelopeVol >> 16);
+
+    // Redux
+    if (g_emulator->settings.get<Emulator::SettingReduxSPU>().value) {
+        disp = -0x10 + 32;
+        if (ch->ADSRX.get<exAttackModeExp>().value) {
+            if (reduxEnvelopeVol >= 0x60000000) {
+                disp = -0x18 + 32;
+            }
+        }
+        reduxEnvelopeVol += m_table[ch->ADSRX.get<exAttackRate>().value + disp];
+
+        if (reduxEnvelopeVol < 0) {
+            reduxEnvelopeVol = 0x7FFFFFFF;
+            ch->ADSRX.get<exState>().value = 1;
+        }
+
+        ch->ADSRX.get<exEnvelopeVol>().value = reduxEnvelopeVol;
+        ch->ADSRX.get<exVolume>().value = (reduxEnvelopeVol >>= 21);
+
+        return reduxEnvelopeVol;
+    }
+    // Redux
+
+    // Peops
+    if (g_emulator->settings.get<Emulator::SettingShalmaSPU>().value) {
+        rate = ch->ADSRX.get<exAttackRate>().value ^ 0x7f;
+
+        if (ch->ADSRX.get<exAttackModeExp>().value && peopsEnvelopeVol >= 0x6000) {
+            rate += 8;
+        }
+
+        EnvelopeVol_f++;
+        if (EnvelopeVol_f >= RateTable_denom[rate]) {
+            EnvelopeVol_f = 0;
+
+            peopsEnvelopeVol += RateTableAdd[rate];
+        }
+
+        if (peopsEnvelopeVol > 0x7fff) {  // Envelope level is 32767 or higher
+            peopsEnvelopeVol = 0x7fff;
+            EnvelopeVol_f = 0;
+            ch->ADSRX.get<exState>().value = 1;  // initialization ends
+        }
+
+        peopsEnvelopeVol |= (peopsEnvelopeVol << 16);
+        ch->ADSRX.get<exEnvelopeVol>().value = peopsEnvelopeVol;
+        ch->ADSRX.get<exEnvelopeVol_f>().value = EnvelopeVol_f;
+        ch->ADSRX.get<exVolume>().value = peopsEnvelopeVol >>= 21;
+        return peopsEnvelopeVol;
+    }
+    // Peops
+
+    return 0;
+}
+
+int PCSX::SPU::ADSR::Decay(PCSX::SPU::SPUCHAN* ch) {
+    uint32_t disp;
+    int rate;
+    int32_t EnvelopeVol = ch->ADSRX.get<exEnvelopeVol>().value;
+    int32_t EnvelopeVol_f = ch->ADSRX.get<exEnvelopeVol_f>().value;
+    int32_t reduxEnvelopeVol = EnvelopeVol;
+    int32_t peopsEnvelopeVol = (EnvelopeVol >> 16);
+
+    // Redux
+    if (g_emulator->settings.get<Emulator::SettingReduxSPU>().value) {
+        disp = m_tableDisp[(EnvelopeVol >> 28) & 0x7];
+        reduxEnvelopeVol -= m_table[ch->ADSRX.get<exDecayRate>().value + disp];
+
+        if (reduxEnvelopeVol < 0) {
+            reduxEnvelopeVol = 0;
+        }
+
+        if (reduxEnvelopeVol <= (ch->ADSRX.get<exSustainLevel>().value << 27)) {
+            ch->ADSRX.get<exState>().value = 2;
+        }
+
+        ch->ADSRX.get<exEnvelopeVol>().value = reduxEnvelopeVol;
+        ch->ADSRX.get<exVolume>().value = (reduxEnvelopeVol >>= 21);
+        return reduxEnvelopeVol;
+    }
+    // Redux
+
+    // Peops
+    if (g_emulator->settings.get<Emulator::SettingShalmaSPU>().value) {
+        rate = ((ch->ADSRX.get<exDecayRate>().value / 4) ^ 0x1f) * 4;
+
+        EnvelopeVol_f++;
+        if (EnvelopeVol_f >= RateTable_denom[rate]) {
+            EnvelopeVol_f = 0;
+            peopsEnvelopeVol += (RateTableSub[rate] * peopsEnvelopeVol) >> 15;
+        }
+
+        if (peopsEnvelopeVol < 0) {
+            peopsEnvelopeVol = 0;
+        }
+
+        // FF7 cursor - use Neill's 4-bit accuracy
+        if (((peopsEnvelopeVol >> 11) & 0xf) <= ch->ADSRX.get<exSustainLevel>().value) {
+            ch->ADSRX.get<exState>().value = 2;
+        }
+
+        peopsEnvelopeVol |= (peopsEnvelopeVol << 16);
+        ch->ADSRX.get<exEnvelopeVol>().value = peopsEnvelopeVol;
+        ch->ADSRX.get<exEnvelopeVol_f>().value = EnvelopeVol_f;
+        ch->ADSRX.get<exVolume>().value = peopsEnvelopeVol >>= 21;
+        return peopsEnvelopeVol >> 0;
+    }
+    // Peops
+
+    return 0;
+}
+
+int PCSX::SPU::ADSR::Sustain(PCSX::SPU::SPUCHAN* ch) {
+    uint32_t disp;
+    int rate;
+    int32_t EnvelopeVol = ch->ADSRX.get<exEnvelopeVol>().value;
+    int32_t EnvelopeVol_f = ch->ADSRX.get<exEnvelopeVol_f>().value;
+    int32_t reduxEnvelopeVol = EnvelopeVol;
+    int32_t peopsEnvelopeVol = (EnvelopeVol >> 16);
+
+    if (g_emulator->settings.get<Emulator::SettingReduxSPU>().value) {
+        if (ch->ADSRX.get<exSustainIncrease>().value) {
+            disp = -0x10 + 32;
+            if (ch->ADSRX.get<exSustainModeExp>().value) {
+                if (reduxEnvelopeVol >= 0x60000000) disp = -0x18 + 32;
+            }
+            reduxEnvelopeVol += m_table[ch->ADSRX.get<exSustainRate>().value + disp];
+
+            if (reduxEnvelopeVol < 0) {
+                reduxEnvelopeVol = 0x7FFFFFFF;
+            }
+        } else {
+            if (ch->ADSRX.get<exSustainModeExp>().value) {
+                disp = m_tableDisp[((reduxEnvelopeVol >> 28) & 0x7) + 8];
+            } else {
+                disp = -0x0F + 32;
+            }
+            reduxEnvelopeVol -= m_table[ch->ADSRX.get<exSustainRate>().value + disp];
+
+            if (reduxEnvelopeVol < 0) {
+                reduxEnvelopeVol = 0;
+            }
+        }
+        ch->ADSRX.get<exEnvelopeVol>().value = reduxEnvelopeVol;
+        ch->ADSRX.get<exVolume>().value = (reduxEnvelopeVol >>= 21);
+        return reduxEnvelopeVol;
+    }
+
+    if (g_emulator->settings.get<Emulator::SettingShalmaSPU>().value) {
+        rate = ch->ADSRX.get<exSustainRate>().value ^ 0x7f;
+
+        if (ch->ADSRX.get<exSustainIncrease>().value) {
+            // OPTIMIZE: fast finish
+            if (peopsEnvelopeVol == 0x7fff && EnvelopeVol_f == 0) {
+                return 0x7fff >> 5;
+            }
+
+            if (ch->ADSRX.get<exSustainModeExp>().value && peopsEnvelopeVol >= 0x6000) {
+                rate += 8;
+            }
+
+            EnvelopeVol_f++;
+            if (EnvelopeVol_f >= RateTable_denom[rate]) {
+                EnvelopeVol_f = 0;
+                peopsEnvelopeVol += RateTableAdd[rate];
+            }
+
+            if (peopsEnvelopeVol > 0x7fff) {
+                peopsEnvelopeVol = 0x7fff;
+                EnvelopeVol_f = 0;
+            }
+        } else {
+            // OPTIMIZE: fast finish
+            if (peopsEnvelopeVol == 0 && EnvelopeVol_f == 0) {
+                return 0;
+            }
+
+            EnvelopeVol_f++;
+            if (EnvelopeVol_f >= RateTable_denom[rate]) {
+                EnvelopeVol_f = 0;
+
+                if (ch->ADSRX.get<exSustainModeExp>().value) {
+                    peopsEnvelopeVol += (RateTableSub[rate] * peopsEnvelopeVol) >> 15;
+                } else
+                    peopsEnvelopeVol += RateTableSub[rate];
+            }
+
+            if (peopsEnvelopeVol < 0) {
+                peopsEnvelopeVol = 0;
+                EnvelopeVol_f = 0;
+            }
+        }
+
+        peopsEnvelopeVol |= (peopsEnvelopeVol << 16);
+        ch->ADSRX.get<exEnvelopeVol>().value = peopsEnvelopeVol;
+        ch->ADSRX.get<exEnvelopeVol_f>().value = EnvelopeVol_f;
+        ch->ADSRX.get<exVolume>().value = peopsEnvelopeVol >>= 21;
+        return peopsEnvelopeVol >> 0;
+    }
+
+    return 0;
+}
+
+int PCSX::SPU::ADSR::Release(PCSX::SPU::SPUCHAN* ch) {
+    uint32_t disp;
+    int rate;
+    int32_t EnvelopeVol = ch->ADSRX.get<exEnvelopeVol>().value;
+    int32_t EnvelopeVol_f = ch->ADSRX.get<exEnvelopeVol_f>().value;
+    int32_t reduxEnvelopeVol = EnvelopeVol;
+    int32_t peopsEnvelopeVol = (EnvelopeVol >> 16);
+
+    // Redux
+    if (g_emulator->settings.get<Emulator::SettingReduxSPU>().value) {
+        if (ch->ADSRX.get<exReleaseModeExp>().value) {
+            disp = m_tableDisp[(EnvelopeVol >> 28) & 0x7];
+        } else {
+            disp = -0x0C + 32;
+        }
+        reduxEnvelopeVol -= m_table[ch->ADSRX.get<exReleaseRate>().value + disp];
+
+        if (reduxEnvelopeVol < 0) {
+            reduxEnvelopeVol = 0;
+            ch->data.get<Chan::On>().value = false;
+        }
+
+        ch->ADSRX.get<exEnvelopeVol>().value = reduxEnvelopeVol;
+        ch->ADSRX.get<exVolume>().value = (reduxEnvelopeVol >>= 21);
+
+        return reduxEnvelopeVol;
+    }
+
+    // Peops
+    if (g_emulator->settings.get<Emulator::SettingShalmaSPU>().value) {
+        ch->ADSRX.get<exState>().value = 3;
+
+        // OPTIMIZE: fast finish
+        if (peopsEnvelopeVol == 0 && EnvelopeVol_f == 0) {
+            return 0;
+        }
+
+        rate = ((ch->ADSRX.get<exReleaseRate>().value / 4) ^ 0x1f) * 4;
+
+        EnvelopeVol_f++;
+        if (EnvelopeVol_f >= RateTable_denom[rate]) {
+            EnvelopeVol_f = 0;
+
+            if (ch->ADSRX.get<exReleaseModeExp>().value) {
+                peopsEnvelopeVol += (RateTableSub[rate] * peopsEnvelopeVol) >> 15;
+            } else
+                peopsEnvelopeVol += RateTableSub[rate];
+        }
+
+        if (peopsEnvelopeVol <= 0) {
+            peopsEnvelopeVol = 0;
+            EnvelopeVol_f = 0;
+            ch->data.get<Chan::On>().value = false;
+        }
+
+        peopsEnvelopeVol |= (peopsEnvelopeVol << 16);
+        ch->ADSRX.get<exEnvelopeVol>().value = peopsEnvelopeVol;
+        ch->ADSRX.get<exEnvelopeVol_f>().value = EnvelopeVol_f;
+        ch->ADSRX.get<exVolume>().value = (peopsEnvelopeVol >>= 21);
+
+        return peopsEnvelopeVol;
+    }
+
+    return 0;
+}
 
 // Init ADSR
 PCSX::SPU::ADSR::Table::Table() {
@@ -78,31 +351,31 @@ PCSX::SPU::ADSR::Table::Table() {
 
     // Peops
     {
-        int lcv;
+        int rate;
 
         memset(RateTableAdd, 0, sizeof(int) * 128);
         memset(RateTableSub, 0, sizeof(int) * 128);
 
         // Optimize table - Dr. Hell ADSR math
-        for (lcv = 0; lcv < 48; lcv++) {
-            RateTableAdd[lcv] = (7 - (lcv & 3)) << (11 - (lcv >> 2));
-            RateTableSub[lcv] = (-8 + (lcv & 3)) << (11 - (lcv >> 2));
+        for (rate = 0; rate < 48; rate++) {
+            RateTableAdd[rate] = (7 - (rate & 3)) << (11 - (rate >> 2));
+            RateTableSub[rate] = (-8 + (rate & 3)) << (11 - (rate >> 2));
 
             // sampling time
-            RateTable_denom[lcv] = 1;
+            RateTable_denom[rate] = 1;
         }
 
-        for (lcv = 48; lcv < 128; lcv++) {
+        for (rate = 48; rate < 128; rate++) {
             // sampling time
-            RateTable_denom[lcv] = 1 << ((lcv >> 2) - 11);
+            RateTable_denom[rate] = 1 << ((rate >> 2) - 11);
 
-            RateTableAdd[lcv] = 7 - (lcv & 3);
-            RateTableSub[lcv] = -8 + (lcv & 3);
+            RateTableAdd[rate] = 7 - (rate & 3);
+            RateTableSub[rate] = -8 + (rate & 3);
         }
     }
 }
 
-void PCSX::SPU::ADSR::start(SPUCHAN *pChannel)  // MIX ADSR
+void PCSX::SPU::ADSR::start(SPUCHAN* pChannel)  // MIX ADSR
 {
     pChannel->ADSRX.get<exVolume>().value = 1;  // and init some adsr vars
     pChannel->ADSRX.get<exState>().value = 0;
@@ -110,249 +383,21 @@ void PCSX::SPU::ADSR::start(SPUCHAN *pChannel)  // MIX ADSR
     pChannel->ADSRX.get<exEnvelopeVol_f>().value = 0;
 }
 
-int PCSX::SPU::ADSR::mix(SPUCHAN *ch) {
-    uint32_t disp;
-    int rate;
-    int32_t EnvelopeVol = ch->ADSRX.get<exEnvelopeVol>().value;
-    int32_t EnvelopeVol_f = ch->ADSRX.get<exEnvelopeVol_f>().value;
-    int32_t reduxEnvelopeVol = EnvelopeVol;
-    int32_t peopsEnvelopeVol = (EnvelopeVol >> 16);
-
+int PCSX::SPU::ADSR::mix(SPUCHAN* ch) {
     if (ch->data.get<Chan::Stop>().value)  // should be stopped:
     {                                      // do release
-
-        // Redux
-        if (REDUX_SPU) {
-            if (ch->ADSRX.get<exReleaseModeExp>().value) {
-                disp = m_tableDisp[(EnvelopeVol >> 28) & 0x7];
-            } else {
-                disp = -0x0C + 32;
-            }
-            reduxEnvelopeVol -= m_table[ch->ADSRX.get<exReleaseRate>().value + disp];
-
-            if (reduxEnvelopeVol < 0) {
-                reduxEnvelopeVol = 0;
-                ch->data.get<Chan::On>().value = false;
-            }
-
-            ch->ADSRX.get<exEnvelopeVol>().value = reduxEnvelopeVol;
-            ch->ADSRX.get<exVolume>().value = (reduxEnvelopeVol >>= 21);
-
-            return reduxEnvelopeVol;
-        }
-
-        // Peops
-        if (PEOPS_SPU) {
-            ch->ADSRX.get<exState>().value = 3;
-
-            // OPTIMIZE: fast finish
-            if (peopsEnvelopeVol == 0 && EnvelopeVol_f == 0) {
-                return 0;
-            }
-
-            rate = ((ch->ADSRX.get<exReleaseRate>().value / 4) ^ 0x1f) * 4;
-
-            EnvelopeVol_f++;
-            if (EnvelopeVol_f >= RateTable_denom[rate]) {
-                EnvelopeVol_f = 0;
-
-                if (ch->ADSRX.get<exReleaseModeExp>().value) {
-                    peopsEnvelopeVol += (RateTableSub[rate] * peopsEnvelopeVol) >> 15;
-                } else
-                    peopsEnvelopeVol += RateTableSub[rate];
-            }
-
-            if (peopsEnvelopeVol <= 0) {
-                peopsEnvelopeVol = 0;
-                EnvelopeVol_f = 0;
-                ch->data.get<Chan::On>().value = false;
-            }
-
-            peopsEnvelopeVol |= (peopsEnvelopeVol << 16);
-            ch->ADSRX.get<exEnvelopeVol>().value = peopsEnvelopeVol;
-            ch->ADSRX.get<exEnvelopeVol_f>().value = EnvelopeVol_f;
-            ch->ADSRX.get<exVolume>().value = (peopsEnvelopeVol >>= 21);
-
-            return peopsEnvelopeVol;
-        }
-    } else  // not stopped yet?
-    {
-        if (ch->ADSRX.get<exState>().value == 0)  // -> attack
-        {
-            // Redux
-            if (REDUX_SPU) {
-                disp = -0x10 + 32;
-                if (ch->ADSRX.get<exAttackModeExp>().value) {
-                    if (reduxEnvelopeVol >= 0x60000000) {
-                        disp = -0x18 + 32;
-                    }
-                }
-                reduxEnvelopeVol += m_table[ch->ADSRX.get<exAttackRate>().value + disp];
-
-                if (reduxEnvelopeVol < 0) {
-                    reduxEnvelopeVol = 0x7FFFFFFF;
-                    ch->ADSRX.get<exState>().value = 1;
-                }
-
-                ch->ADSRX.get<exEnvelopeVol>().value = reduxEnvelopeVol;
-                ch->ADSRX.get<exVolume>().value = (reduxEnvelopeVol >>= 21);
-
-                return reduxEnvelopeVol;
-            }
-            // Redux
-
-            // Peops
-            if (PEOPS_SPU) {
-                rate = ch->ADSRX.get<exAttackRate>().value ^ 0x7f;
-
-                if (ch->ADSRX.get<exAttackModeExp>().value && peopsEnvelopeVol >= 0x6000) {
-                    rate += 8;
-                }
-
-                EnvelopeVol_f++;
-                if (EnvelopeVol_f >= RateTable_denom[rate]) {
-                    EnvelopeVol_f = 0;
-
-                    peopsEnvelopeVol += RateTableAdd[rate];
-                }
-
-                if (peopsEnvelopeVol > 0x7fff) {
-                    peopsEnvelopeVol = 0x7fff;
-                    EnvelopeVol_f = 0;
-                    ch->ADSRX.get<exState>().value = 1;
-                }
-
-                peopsEnvelopeVol |= (peopsEnvelopeVol << 16);
-                ch->ADSRX.get<exEnvelopeVol>().value = peopsEnvelopeVol;
-                ch->ADSRX.get<exEnvelopeVol_f>().value = EnvelopeVol_f;
-                ch->ADSRX.get<exVolume>().value = peopsEnvelopeVol >>= 21;
-                return peopsEnvelopeVol;
-            }
-            // Peops
-        }
-        //--------------------------------------------------//
-        if (ch->ADSRX.get<exState>().value == 1)  // -> decay
-        {
-            if (REDUX_SPU) {
-                disp = m_tableDisp[(EnvelopeVol >> 28) & 0x7];
-                reduxEnvelopeVol -= m_table[ch->ADSRX.get<exDecayRate>().value + disp];
-
-                if (reduxEnvelopeVol < 0) {
-                    reduxEnvelopeVol = 0;
-                }
-
-                if (reduxEnvelopeVol <= ch->ADSRX.get<exSustainLevel>().value) {
-                    ch->ADSRX.get<exState>().value = 2;
-                }
-
-                ch->ADSRX.get<exEnvelopeVol>().value = reduxEnvelopeVol;
-                ch->ADSRX.get<exVolume>().value = (reduxEnvelopeVol >>= 21);
-                return reduxEnvelopeVol;
-            }
-
-            if (PEOPS_SPU) {
-                rate = ((ch->ADSRX.get<exDecayRate>().value / 4) ^ 0x1f);
-
-                EnvelopeVol_f++;
-                if (EnvelopeVol_f >= RateTable_denom[rate]) {
-                    EnvelopeVol_f = 0;
-
-                    peopsEnvelopeVol += (RateTableSub[rate] * peopsEnvelopeVol) >> 15;
-                }
-
-                // FF7 cursor - use Neill's 4-bit accuracy
-                if (((peopsEnvelopeVol >> 11) & 0xf) <= ch->ADSRX.get<exSustainLevel>().value) {
-                    ch->ADSRX.get<exState>().value = 2;
-                }
-
-                peopsEnvelopeVol |= (peopsEnvelopeVol << 16);
-                ch->ADSRX.get<exEnvelopeVol>().value = peopsEnvelopeVol;
-                ch->ADSRX.get<exEnvelopeVol_f>().value = EnvelopeVol_f;
-                ch->ADSRX.get<exVolume>().value = peopsEnvelopeVol >>= 21;
-                return peopsEnvelopeVol >> 0;
-            }
-        }
-        //--------------------------------------------------//
-        if (ch->ADSRX.get<exState>().value == 2)  // -> sustain
-        {
-            if (REDUX_SPU) {
-                if (ch->ADSRX.get<exSustainIncrease>().value) {
-                    disp = -0x10 + 32;
-                    if (ch->ADSRX.get<exSustainModeExp>().value) {
-                        if (reduxEnvelopeVol >= 0x60000000) disp = -0x18 + 32;
-                    }
-                    reduxEnvelopeVol += m_table[ch->ADSRX.get<exSustainRate>().value + disp];
-
-                    if (reduxEnvelopeVol < 0) {
-                        reduxEnvelopeVol = 0x7FFFFFFF;
-                    }
-                } else {
-                    if (ch->ADSRX.get<exSustainModeExp>().value) {
-                        disp = m_tableDisp[((reduxEnvelopeVol >> 28) & 0x7) + 8];
-                    } else {
-                        disp = -0x0F + 32;
-                    }
-                    reduxEnvelopeVol -= m_table[ch->ADSRX.get<exSustainRate>().value + disp];
-
-                    if (reduxEnvelopeVol < 0) {
-                        reduxEnvelopeVol = 0;
-                    }
-                }
-                ch->ADSRX.get<exEnvelopeVol>().value = reduxEnvelopeVol;
-                ch->ADSRX.get<exVolume>().value = (reduxEnvelopeVol >>= 21);
-                return reduxEnvelopeVol;
-            }
-
-            if (PEOPS_SPU) {
-                if (ch->ADSRX.get<exSustainIncrease>().value) {
-                    // OPTIMIZE: fast finish
-                    if (peopsEnvelopeVol == 0x7fff && EnvelopeVol_f == 0) return 0x7fff;
-
-                    rate = ch->ADSRX.get<exSustainRate>().value ^ 0x7f;
-
-                    if (ch->ADSRX.get<exSustainModeExp>().value && peopsEnvelopeVol >= 0x6000) rate += 8;
-
-                    EnvelopeVol_f++;
-                    if (EnvelopeVol_f >= RateTable_denom[rate]) {
-                        EnvelopeVol_f = 0;
-
-                        peopsEnvelopeVol += RateTableAdd[rate];
-                    }
-
-                    if (peopsEnvelopeVol > 0x7fff) {
-                        peopsEnvelopeVol = 0x7fff;
-                        EnvelopeVol_f = 0;
-                    }
-                } else {
-                    // OPTIMIZE: fast finish
-                    if (peopsEnvelopeVol == 0 && EnvelopeVol_f == 0) return 0;
-
-                    rate = ch->ADSRX.get<exSustainRate>().value ^ 0x7f;
-
-                    EnvelopeVol_f++;
-                    if (EnvelopeVol_f >= RateTable_denom[rate]) {
-                        EnvelopeVol_f = 0;
-
-                        if (ch->ADSRX.get<exSustainModeExp>().value) {
-                            peopsEnvelopeVol += (RateTableSub[rate] * peopsEnvelopeVol) >> 15;
-                        } else
-                            peopsEnvelopeVol += RateTableSub[rate];
-                    }
-
-                    if (peopsEnvelopeVol < 0) {
-                        peopsEnvelopeVol = 0;
-                        EnvelopeVol_f = 0;
-                    }
-                }
-
-                peopsEnvelopeVol |= (peopsEnvelopeVol << 16);
-                ch->ADSRX.get<exEnvelopeVol>().value = peopsEnvelopeVol;
-                ch->ADSRX.get<exEnvelopeVol_f>().value = EnvelopeVol_f;
-                ch->ADSRX.get<exVolume>().value = peopsEnvelopeVol >>= 21;
-                return peopsEnvelopeVol >> 0;
-            }
-        }
+        return Release(ch);
     }
+
+    switch (ch->ADSRX.get<exState>().value) {
+        case 0:
+            return Attack(ch);
+        case 1:
+            return Decay(ch);
+        case 2:
+            return Sustain(ch);
+    }
+    
     return 0;
 }
 

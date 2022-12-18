@@ -181,6 +181,8 @@ class Emulator {
     typedef Setting<bool, TYPESTRING("KioskMode"), false> SettingKioskMode;
     typedef Setting<bool, TYPESTRING("Mcd1Pocketstation"), false> SettingMcd1Pocketstation;
     typedef Setting<bool, TYPESTRING("Mcd2Pocketstation"), false> SettingMcd2Pocketstation;
+    typedef Setting<bool, TYPESTRING("ReduxSPU"), false> SettingReduxSPU;
+    typedef Setting<bool, TYPESTRING("ShalmaSPU"), false> SettingShalmaSPU;
 
     Settings<SettingStdout, SettingLogfile, SettingMcd1, SettingMcd2, SettingBios, SettingPpfDir, SettingPsxExe,
              SettingXa, SettingSpuIrq, SettingBnWMdec, SettingScaler, SettingAutoVideo, SettingVideo, SettingFastBoot,
@@ -188,7 +190,7 @@ class Emulator {
              SettingMcd2Inserted, SettingDynarec, Setting8MB, SettingGUITheme, SettingDither, SettingGLErrorReporting,
              SettingGLErrorReportingSeverity, SettingFullCaching, SettingHardwareRenderer, SettingShownAutoUpdateConfig,
              SettingAutoUpdate, SettingMSAA, SettingLinearFiltering, SettingKioskMode, SettingMcd1Pocketstation,
-             SettingMcd2Pocketstation>
+             SettingMcd2Pocketstation, SettingReduxSPU, SettingShalmaSPU>
         settings;
     class PcsxConfig {
       public:

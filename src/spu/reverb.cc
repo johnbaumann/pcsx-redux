@@ -100,19 +100,43 @@ void PCSX::SPU::impl::SetREVERB(unsigned short val) {
 ////////////////////////////////////////////////////////////////////////
 
 void PCSX::SPU::impl::StartREVERB(SPUCHAN *pChannel) {
-    if (pChannel->data.get<Chan::Reverb>().value && (spuCtrl & 0x80))  // reverb possible?
-    {
-        if (settings.get<Reverb>() == 2)
-            pChannel->data.get<Chan::RVBActive>().value = true;
-        else if (settings.get<Reverb>() == 1 && iReverbOff > 0)  // -> fake reverb used?
+    static const int APU_run = 10;
+
+    if (g_emulator->settings.get<Emulator::SettingReduxSPU>().value) {
+        if (pChannel->data.get<Chan::Reverb>().value && (spuCtrl & 0x80))  // reverb possible?
         {
-            pChannel->data.get<Chan::RVBActive>().value = true;  // -> activate it
-            pChannel->data.get<Chan::RVBOffset>().value = iReverbOff * 45;
-            pChannel->data.get<Chan::RVBRepeat>().value = iReverbRepeat * 45;
-            pChannel->data.get<Chan::RVBNum>().value = iReverbNum;
-        }
-    } else
-        pChannel->data.get<Chan::RVBActive>().value = false;  // else -> no reverb
+            if (settings.get<Reverb>() == 2)
+                pChannel->data.get<Chan::RVBActive>().value = true;
+            else if (settings.get<Reverb>() == 1 && iReverbOff > 0)  // -> fake reverb used?
+            {
+                pChannel->data.get<Chan::RVBActive>().value = true;  // -> activate it
+                pChannel->data.get<Chan::RVBOffset>().value = iReverbOff * 45;
+                pChannel->data.get<Chan::RVBRepeat>().value = iReverbRepeat * 45;
+                pChannel->data.get<Chan::RVBNum>().value = iReverbNum;
+            }
+        } else
+            pChannel->data.get<Chan::RVBActive>().value = false;  // else -> no reverb
+    }
+
+    if (g_emulator->settings.get<Emulator::SettingShalmaSPU>().value) {
+        // note: reverb -write- flag, not play flag
+        // if(pChannel->bReverb && (spuCtrl & CTRL_REVERB))               // reverb possible?
+        if (pChannel->data.get<Chan::Reverb>().value)  // reverb possible?
+        {
+            if (settings.get<Reverb>() == 2)
+                pChannel->data.get<Chan::RVBActive>().value = true;
+            else {
+                if (settings.get<Reverb>() == 1 && iReverbOff > 0)  // -> fake reverb used?
+                {
+                    pChannel->data.get<Chan::RVBActive>().value = true;  // -> activate it
+                    pChannel->data.get<Chan::RVBOffset>().value = iReverbOff * APU_run;
+                    pChannel->data.get<Chan::RVBRepeat>().value = iReverbRepeat * APU_run;
+                    pChannel->data.get<Chan::RVBNum>().value = iReverbNum;
+                }
+            }
+        } else
+            pChannel->data.get<Chan::RVBActive>().value = false;  // else -> no reverb
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -280,6 +304,10 @@ int PCSX::SPU::impl::MixREVERBLeft(int ns) {
 
                 rvb.iRVBLeft = (g_buffer(rvb.MIX_DEST_A0) + g_buffer(rvb.MIX_DEST_B0)) / 3;
                 rvb.iRVBRight = (g_buffer(rvb.MIX_DEST_A1) + g_buffer(rvb.MIX_DEST_B1)) / 3;
+                
+                if (rvb.iRVBLeft || rvb.iRVBRight) {
+                    rvb.iLastRVBLeft = rvb.iLastRVBLeft;
+                }
 
                 rvb.iRVBLeft = (rvb.iRVBLeft * rvb.VolLeft) / 0x4000;
                 rvb.iRVBRight = (rvb.iRVBRight * rvb.VolRight) / 0x4000;
@@ -290,8 +318,47 @@ int PCSX::SPU::impl::MixREVERBLeft(int ns) {
                 return rvb.iLastRVBLeft + (rvb.iRVBLeft - rvb.iLastRVBLeft) / 2;
             } else  // -> reverb off
             {
-                rvb.iLastRVBLeft = rvb.iLastRVBRight = rvb.iRVBLeft = rvb.iRVBRight = 0;
+                // Redux
+                if (g_emulator->settings.get<Emulator::SettingReduxSPU>().value) {
+                    rvb.iLastRVBLeft = rvb.iLastRVBRight = rvb.iRVBLeft = rvb.iRVBRight = 0;
+                }
+                // Redux
+
+                // Peops
+                if (g_emulator->settings.get<Emulator::SettingShalmaSPU>().value) {
+                    // Vib Ribbon - grab current reverb sample (cdda data)
+                    // - mono data
+
+                    rvb.iLastRVBLeft = rvb.iRVBLeft;
+                    rvb.iLastRVBLeft = rvb.iRVBRight;
+
+                    rvb.iRVBLeft = (short)spuMem[rvb.CurrAddr];
+                    rvb.iRVBRight = rvb.iRVBLeft;
+                }
+                // Peops
             }
+
+            // Peops
+            if (g_emulator->settings.get<Emulator::SettingShalmaSPU>().value) {
+                // Resident Evil 2 - reverb on hall door locks ($4000)
+                {
+                    int voll, volr;
+
+                    if (rvb.VolLeft & 0x8000)
+                        voll = (rvb.VolLeft & 0x7fff) - 0x8000;
+                    else
+                        voll = (rvb.VolLeft & 0x7fff);
+
+                    if (rvb.VolRight & 0x8000)
+                        volr = (rvb.VolRight & 0x7fff) - 0x8000;
+                    else
+                        volr = (rvb.VolRight & 0x7fff);
+
+                    rvb.iRVBLeft = (rvb.iRVBLeft * voll) / 0x8000;
+                    rvb.iRVBRight = (rvb.iRVBRight * volr) / 0x8000;
+                }
+            }
+            // Peops
 
             rvb.CurrAddr++;
             if (rvb.CurrAddr > 0x3ffff) rvb.CurrAddr = rvb.StartAddr;

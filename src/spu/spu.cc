@@ -151,6 +151,36 @@
 //          /
 //
 
+// Noise Waveform - Dr. Hell (Xebra)
+char NoiseWaveAdd[64] = {1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1,
+                         1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
+                         1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1};
+
+unsigned short NoiseFreqAdd[5] = {0, 84, 140, 180, 210};
+
+void PCSX::SPU::impl::NoiseClock() {
+    unsigned int level;
+
+    level = 0x8000 >> (dwNoiseClock >> 2);
+    level <<= 16;
+
+    dwNoiseCount += 0x10000;
+
+    // Dr. Hell - fraction
+    dwNoiseCount += NoiseFreqAdd[dwNoiseClock & 3];
+    if ((dwNoiseCount & 0xffff) >= NoiseFreqAdd[4]) {
+        dwNoiseCount += 0x10000;
+        dwNoiseCount -= NoiseFreqAdd[dwNoiseClock & 3];
+    }
+
+    if (dwNoiseCount >= level) {
+        while (dwNoiseCount >= level) dwNoiseCount -= level;
+
+        // Dr. Hell - form
+        dwNoiseVal = (dwNoiseVal << 1) | NoiseWaveAdd[(dwNoiseVal >> 10) & 63];
+    }
+}
+
 static inline void InterpolateUp(PCSX::SPU::SPUCHAN *pChannel) {
     auto &SB = pChannel->data.get<PCSX::SPU::Chan::SB>().value;
     if (SB[32].value == 1)  // flag == 1? calc step and set flag... and don't change the value in this pass
@@ -291,24 +321,39 @@ inline void PCSX::SPU::impl::FModChangeFrequency(SPUCHAN *pChannel, int ns) {
 
 inline int PCSX::SPU::impl::iGetNoiseVal(SPUCHAN *pChannel) {
     auto &SB = pChannel->data.get<PCSX::SPU::Chan::SB>().value;
-    int fa;
+    int fa = 0;
 
-    if ((dwNoiseVal <<= 1) & 0x80000000L) {
-        dwNoiseVal ^= 0x0040001L;
-        fa = ((dwNoiseVal >> 2) & 0x7fff);
-        fa = -fa;
-    } else
-        fa = (dwNoiseVal >> 2) & 0x7fff;
+    // Redux
+    if (g_emulator->settings.get<Emulator::SettingReduxSPU>().value) {
+        if ((dwNoiseVal <<= 1) & 0x80000000L) {
+            dwNoiseVal ^= 0x0040001L;
+            fa = ((dwNoiseVal >> 2) & 0x7fff);
+            fa = -fa;
+        } else
+            fa = (dwNoiseVal >> 2) & 0x7fff;
 
-    // mmm... depending on the noise freq we allow bigger/smaller changes to the previous val
-    fa = pChannel->data.get<PCSX::SPU::Chan::OldNoise>().value +
-         ((fa - pChannel->data.get<PCSX::SPU::Chan::OldNoise>().value) / ((0x001f - ((spuCtrl & 0x3f00) >> 9)) + 1));
-    if (fa > 32767L) fa = 32767L;
-    if (fa < -32767L) fa = -32767L;
-    pChannel->data.get<PCSX::SPU::Chan::OldNoise>().value = fa;
+        // mmm... depending on the noise freq we allow bigger/smaller changes to the previous val
+        fa =
+            pChannel->data.get<PCSX::SPU::Chan::OldNoise>().value +
+            ((fa - pChannel->data.get<PCSX::SPU::Chan::OldNoise>().value) / ((0x001f - ((spuCtrl & 0x3f00) >> 9)) + 1));
+        if (fa > 32767L) fa = 32767L;
+        if (fa < -32767L) fa = -32767L;
+        pChannel->data.get<PCSX::SPU::Chan::OldNoise>().value = fa;
 
-    if (settings.get<Interpolation>() < 2)  // no gauss/cubic interpolation?
-        SB[29].value = fa;                  // -> store noise val in "current sample" slot
+        if (settings.get<Interpolation>() < 2)  // no gauss/cubic interpolation?
+            SB[29].value = fa;                  // -> store noise val in "current sample" slot
+    }
+    // Redux
+
+    // Peops
+    if (g_emulator->settings.get<Emulator::SettingShalmaSPU>().value) {
+        fa = (int16_t)dwNoiseVal;
+
+        if (settings.get<Interpolation>() < 2)  // no gauss/cubic interpolation?
+            SB[29].value = fa;                  // -> store noise val in "current sample" slot
+    }
+    // Peops
+
     return fa;
 }
 
@@ -508,6 +553,12 @@ void PCSX::SPU::impl::MainThread() {
 
                 while (ns < NSSIZE)  // loop until 1 ms of data is reached
                 {
+                    // Peops
+                    if (g_emulator->settings.get<Emulator::SettingShalmaSPU>().value) {
+                        NoiseClock();
+                    }
+                    // Peops
+
                     if (pChannel->data.get<PCSX::SPU::Chan::FMod>().value == 1 && iFMod[ns])  // fmod freq channel
                         FModChangeFrequency(pChannel, ns);
 
@@ -518,9 +569,16 @@ void PCSX::SPU::impl::MainThread() {
 
                             if (start == (uint8_t *)-1)  // special "stop" sign
                             {
-                                pChannel->data.get<PCSX::SPU::Chan::On>().value = false;  // -> turn everything off
+                                // Redux
+                                if (g_emulator->settings.get<Emulator::SettingReduxSPU>().value) {
+                                    pChannel->data.get<PCSX::SPU::Chan::On>().value = false;  // -> turn everything off
+                                }
+                                // Redux
+
                                 pChannel->ADSRX.get<exVolume>().value = 0;
                                 pChannel->ADSRX.get<exEnvelopeVol>().value = 0;
+                                pChannel->ADSRX.get<exEnvelopeVol_f>().value = 0;
+
                                 // Although the voices may stop outputting audio, the capture buffer is still filling
                                 // up. At this point, ns samples are already filled, we need (NSSIZE-ns) more samples.
                                 if (pMixIrq && ch == 1) {
@@ -727,6 +785,7 @@ void PCSX::SPU::impl::MainThread() {
                 SSumR[ns] = 0;
                 if (dr < -32767) dr = -32767;
                 if (dr > 32767) dr = 32767;
+                *pS++ = (dl + dr) / 2;
                 *pS++ = (dl + dr) / 2;
             }
         } else  // stereo:
@@ -954,7 +1013,7 @@ void PCSX::SPU::impl::SetupStreams() {
         // we don't use mutex sync... not needed, would only
         // slow us down:
         //   s_chan[i].hMutex=CreateMutex(NULL,FALSE,NULL);
-        s_chan[i].ADSRX.get<exSustainLevel>().value = 0xf << 27;  // -> init sustain
+        s_chan[i].ADSRX.get<exSustainLevel>().value = 0xf;  // -> init sustain
         s_chan[i].data.get<PCSX::SPU::Chan::Mute>().value = false;
         s_chan[i].data.get<PCSX::SPU::Chan::IrqDone>().value = 0;
         s_chan[i].pLoop = spuMemC;

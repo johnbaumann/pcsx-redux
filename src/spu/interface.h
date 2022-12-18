@@ -103,6 +103,7 @@ class impl final : public SPUInterface {
     void VoiceChangeFrequency(SPUCHAN *pChannel);
     void FModChangeFrequency(SPUCHAN *pChannel, int ns);
     int iGetNoiseVal(SPUCHAN *pChannel);
+    void NoiseClock();
     void StoreInterpolationVal(SPUCHAN *pChannel, int fa);
     int iGetInterpolationVal(SPUCHAN *pChannel);
 
@@ -166,7 +167,9 @@ class impl final : public SPUInterface {
     SPUCHAN s_chan[MAXCHAN + 1];  // channel + 1 infos (1 is security for fmod handling)
     REVERBInfo rvb;
 
-    uint32_t dwNoiseVal = 1;  // global noise generator
+    uint32_t dwNoiseVal = 1;    // global noise generator
+    uint32_t dwNoiseClock = 0;  // global noise generator
+    uint32_t dwNoiseCount = 0;  // global noise generator
 
     uint16_t spuCtrl = 0;  // some vars to store psx reg infos
     uint16_t spuStat = 0;

@@ -64,6 +64,16 @@ void PCSX::SPU::impl::debug() {
         return;
     }
     {
+        if (ImGui::Checkbox(_("Redux SPU"), &g_emulator->settings.get<Emulator::SettingReduxSPU>().value)) {
+            g_emulator->settings.get<Emulator::SettingShalmaSPU>().value =
+                !g_emulator->settings.get<Emulator::SettingReduxSPU>().value;
+        }
+        if (ImGui::Checkbox(_("Shalma SPU"), &g_emulator->settings.get<Emulator::SettingShalmaSPU>().value)) {
+            g_emulator->settings.get<Emulator::SettingReduxSPU>().value =
+                !g_emulator->settings.get<Emulator::SettingShalmaSPU>().value;
+        }
+    }
+    {
         ImGui::BeginChild("##debugSPUleft", ImVec2(ImGui::GetWindowContentRegionWidth() * 0.5f, 0), true);
         ImGui::Columns(2);
         for (unsigned i = 0; i < MAXCHAN / 2; i++) {
@@ -114,7 +124,7 @@ void PCSX::SPU::impl::debug() {
             {
                 ImGui::Text(_("Sustain level:\nSustain inc:\nCurr adsr vol:\nRaw enveloppe"));
                 ImGui::SameLine();
-                ImGui::Text("%i\n%i\n%i\n%08x", ADSRX.get<exSustainLevel>().value >> 27,
+                ImGui::Text("%i\n%i\n%i\n%08x", ADSRX.get<exSustainLevel>().value,
                             ADSRX.get<exSustainIncrease>().value, ADSRX.get<exVolume>().value,
                             ADSRX.get<exEnvelopeVol>().value);
             }
