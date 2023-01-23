@@ -65,7 +65,6 @@ inline int PCSX::SPU::ADSR::Attack(SPUCHAN *ch) {
 
     if (EnvelopeVol >= 32767L) {
         EnvelopeVol = 32767L;
-        EnvelopeVolFrak = 0;
         ch->ADSRX.get<exState>().value = ADSRState::Decay;
     }
 
@@ -92,15 +91,14 @@ inline int PCSX::SPU::ADSR::Decay(SPUCHAN *ch) {
         } else {
             EnvelopeVol += numerator_decrease[rate];
         }
-        // EnvelopeVol += (numerator_decrease[rate] * EnvelopeVol) >> 15;
     }
 
     if (EnvelopeVol < 0) {
         EnvelopeVol = 0;
-        EnvelopeVolFrak = 0;
     }
 
-    if (((EnvelopeVol >> 11) & 0xf) < ch->ADSRX.get<exSustainLevel>().value) {
+    // if (((EnvelopeVol >> 12) & 0xf) < ch->ADSRX.get<exSustainLevel>().value) {
+    if (((EnvelopeVol >> 11) & 0xf) <= ch->ADSRX.get<exSustainLevel>().value) {
         ch->ADSRX.get<exState>().value = ADSRState::Sustain;
     }
 
@@ -130,6 +128,10 @@ inline int PCSX::SPU::ADSR::Sustain(SPUCHAN *ch) {
             EnvelopeVol += numerator_increase[rate];
         }
 
+        if (EnvelopeVol > 32767L) {
+            EnvelopeVol = 32767L;
+        }
+
     } else {
         EnvelopeVolFrak++;
         if (EnvelopeVolFrak >= denominator[rate]) {
@@ -142,15 +144,10 @@ inline int PCSX::SPU::ADSR::Sustain(SPUCHAN *ch) {
                 EnvelopeVol += numerator_decrease[rate];
             }
         }
-    }
 
-    if (EnvelopeVol > 32767L) {
-        EnvelopeVol = 32767L;
-    }
-
-    if (EnvelopeVol < 0) {
-        EnvelopeVol = 0;
-        EnvelopeVolFrak = 0;
+        if (EnvelopeVol < 0L) {
+            EnvelopeVol = 0;
+        }
     }
 
     ch->ADSRX.get<exEnvelopeVol>().value = EnvelopeVol;
@@ -178,10 +175,9 @@ inline int PCSX::SPU::ADSR::Release(SPUCHAN *ch) {
         }
     }
 
-    if (EnvelopeVol < 0) {
-        // ch->ADSRX.get<exState>().value = ADSRState::Stopped;
+    if (EnvelopeVol < 0L) {
+        ch->ADSRX.get<exState>().value = ADSRState::Stopped;
         EnvelopeVol = 0;
-        EnvelopeVolFrak = 0;
         ch->data.get<Chan::On>().value = false;
     }
 

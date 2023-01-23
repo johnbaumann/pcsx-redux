@@ -573,10 +573,11 @@ void PCSX::SPU::impl::SetVolumeL(uint8_t ch, int16_t vol)  // LEFT VOLUME
     {
         if (vol & 0x4000)  // -> mmm... phase inverted? have to investigate this
             // vol^=0xffff;
-            vol = 0x3fff - (vol & 0x3fff);
+            //vol = 0x3fff - (vol & 0x3fff);
+            vol = (vol & 0x3fff) - 0x4000;
     }
 
-    vol &= 0x3fff;
+    //vol &= 0x3fff;
     s_chan[ch].data.get<Chan::LeftVolume>().value = vol;  // store volume
 }
 
@@ -598,7 +599,8 @@ void PCSX::SPU::impl::SetVolumeR(uint8_t ch, int16_t vol)  // RIGHT VOLUME
         vol *= 128;
     } else {
         if (vol & 0x4000)  // vol=vol^=0xffff;
-            vol = 0x3fff - (vol & 0x3fff);
+            //vol = 0x3fff - (vol & 0x3fff);
+            vol = (vol & 0x3fff) - 0x4000;
     }
 
     vol &= 0x3fff;

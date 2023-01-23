@@ -229,6 +229,7 @@ class impl final : public SPUInterface {
     int iReverbOff = -1;  // some delay factor for reverb
     int iReverbRepeat = 0;
     int iReverbNum = 1;
+    int iCnt = 0;
 
     // XA
     xa_decode_t *xapGlobal = 0;

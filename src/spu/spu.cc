@@ -413,14 +413,13 @@ inline int PCSX::SPU::impl::iGetInterpolationVal(SPUCHAN *pChannel) {
         case 2:  // gauss interpolation
         {
             int vl, vr;
-            int gpos;
+            const int gpos = SB[28].value;
             vl = (pChannel->data.get<PCSX::SPU::Chan::spos>().value >> 6) & ~3;
-            gpos = SB[28].value;
-            vr = (Gauss::gauss[vl] * gval0) & ~2047;
-            vr += (Gauss::gauss[vl + 1] * gval(1)) & ~2047;
-            vr += (Gauss::gauss[vl + 2] * gval(2)) & ~2047;
-            vr += (Gauss::gauss[vl + 3] * gval(3)) & ~2047;
-            fa = vr >> 11;
+            vr = (Gauss::gauss[0x0ff - gpos] * gval(3));
+            vr += (Gauss::gauss[0x1ff - gpos] * gval(2));
+            vr += (Gauss::gauss[0x100 + gpos] * gval(1));
+            vr += (Gauss::gauss[0x000 + gpos] * gval(0));
+            fa = vr >> 15;
         } break;
         //--------------------------------------------------//
         case 1:  // simple interpolation
@@ -755,16 +754,16 @@ void PCSX::SPU::impl::MainThread() {
 
             d = SSumL[ns] / voldiv;
             SSumL[ns] = 0;
-            if (d < -32767) d = -32767;
-            if (d > 32767) d = 32767;
+            if (d < -32767L) d = -32767L;
+            if (d > 32767L) d = 32767L;
             *pS++ = d;
 
             SSumR[ns] += MixREVERBRight();
 
             d = SSumR[ns] / voldiv;
             SSumR[ns] = 0;
-            if (d < -32767) d = -32767;
-            if (d > 32767) d = 32767;
+            if (d < -32767L) d = -32767L;
+            if (d > 32767L) d = 32767L;
             *pS++ = d;
         }
 
