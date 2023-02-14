@@ -107,8 +107,6 @@ void PCSX::SIO::reset() {
 void PCSX::SIO::writePad(uint8_t value) {
     switch (m_padState) {
         case PAD_STATE_IDLE:                                // start pad
-            m_regs.status |= StatusFlags::RX_FIFONOTEMPTY;  // Transfer is Ready
-            psxHu32ref(0x1044) = SWAP_LEu32(m_regs.status);
 
             switch (m_regs.control & ControlFlags::WHICH_PORT) {
                 case SelectedPort::Port1:
@@ -328,7 +326,7 @@ void PCSX::SIO::writeBaud16(uint16_t value) { m_regs.baud = value; }
 uint8_t PCSX::SIO::read8() {
     uint8_t ret = 0xFF;
 
-    if ((m_regs.status & StatusFlags::RX_FIFONOTEMPTY) && !m_rxFIFO.isEmpty()) {
+    if (!m_rxFIFO.isEmpty()) {
         ret = m_rxFIFO.pull();
         updateFIFOStatus();
     }
