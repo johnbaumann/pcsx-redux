@@ -339,7 +339,9 @@ void PCSX::SPU::impl::NoiseClock() {
     }
 
     if (dwNoiseCount >= level) {
-        while (dwNoiseCount >= level) dwNoiseCount -= level;
+        while (dwNoiseCount >= level) {
+            dwNoiseCount -= level;
+        }
 
         // Dr. Hell - form
         dwNoiseVal = (dwNoiseVal << 1) | NoiseWaveAdd[(dwNoiseVal >> 10) & 63];
@@ -709,8 +711,9 @@ void PCSX::SPU::impl::MainThread() {
                         //////////////////////////////////////////////
                         // ok, left/right sound volume (psx volume goes from 0 ... 0x3fff)
 
-                        if (pChannel->data.get<PCSX::SPU::Chan::Mute>().value)
+                        if (pChannel->data.get<PCSX::SPU::Chan::Mute>().value) {
                             pChannel->data.get<PCSX::SPU::Chan::sval>().value = 0;  // debug mute
+                        }
                         else {
                             SSumL[ns] += (pChannel->data.get<PCSX::SPU::Chan::sval>().value *
                                           pChannel->data.get<PCSX::SPU::Chan::LeftVolume>().value) /

@@ -100,7 +100,7 @@ void PCSX::SPU::impl::SetREVERB(unsigned short val) {
 ////////////////////////////////////////////////////////////////////////
 
 void PCSX::SPU::impl::StartREVERB(SPUCHAN *pChannel) {
-    if (pChannel->data.get<Chan::Reverb>().value && (spuCtrl & 0x80))  // reverb possible?
+    if (pChannel->data.get<Chan::Reverb>().value && (spuCtrl & ControlFlags::ReverbMasterEnable))  // reverb possible?
     {
         if (settings.get<Reverb>() == 2 || settings.get<Reverb>() == 3) {
             pChannel->data.get<Chan::RVBActive>().value = true;
@@ -291,7 +291,7 @@ int PCSX::SPU::impl::AnotherReverbTest(int ns) {
             int32_t zm_Rapf1 = z0_Rapf1 - mAPF1;
             int32_t zm_Lapf2 = z0_Lapf2 - mAPF2;
             int32_t zm_Rapf2 = z0_Rapf2 - mAPF2;
-            
+
             // ___Input from Mixer (Input volume multiplied with incoming data)_____________
             int32_t L_in = rvb.IN_COEF_L * LeftInput;   // from any channels that have Reverb enabled
             int32_t R_in = rvb.IN_COEF_R * RightInput;  // from any channels that have Reverb enabled
