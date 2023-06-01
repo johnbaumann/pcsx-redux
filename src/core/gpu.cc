@@ -661,6 +661,9 @@ void PCSX::GPU::Command::processWrite(Buffer &buf) {
                         m_gpu->m_fastFill.setActive();
                         m_gpu->m_fastFill.processWrite(buf);
                     } break;
+                    case 0x1f: { // Interrupt Request (IRQ1)
+                        m_gpu->requestIRQ1();
+                    } break;
                     default: {
                         gotUnknown = true;
                     } break;
