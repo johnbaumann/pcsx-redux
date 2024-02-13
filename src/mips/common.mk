@@ -35,7 +35,7 @@ ARCHFLAGS += -fno-stack-protector -nostdlib -ffreestanding
 ifeq ($(USE_FUNCTION_SECTIONS),true)
 CPPFLAGS += -ffunction-sections
 endif
-CPPFLAGS += -mno-gpopt -fomit-frame-pointer
+CPPFLAGS += -fdata-sections -mno-gpopt -fomit-frame-pointer
 CPPFLAGS += -fno-builtin -fno-strict-aliasing -Wno-attributes
 CPPFLAGS += $(ARCHFLAGS)
 CPPFLAGS += -I$(ROOTDIR)
@@ -47,8 +47,8 @@ LDFLAGS += $(ARCHFLAGS) -Wl,--oformat=$(FORMAT)
 CPPFLAGS_Release += -Os
 LDFLAGS_Release += -Os
 
-CPPFLAGS_LTO += -Os -flto
-LDFLAGS_LTO += -Os -flto
+CPPFLAGS_LTO += -Os -flto -ffat-lto-objects
+LDFLAGS_LTO += -Os -flto -ffat-lto-objects
 
 CPPFLAGS_Debug += -O0
 CPPFLAGS_SmallDebug += -Og
@@ -80,7 +80,7 @@ $(BINDIR)$(TARGET).elf: $(OBJS) $(LIBRARIES) $(EXTRA_DEPS)
 ifneq ($(strip $(BINDIR)),)
 	mkdir -p $(BINDIR)
 endif
-	$(CC) -g -o $(BINDIR)$(TARGET).elf $(OBJS) $(LDFLAGS) $(LIBRARIES)
+	$(CC) $(LDFLAGS) -g -o $(BINDIR)$(TARGET).elf $(OBJS) $(LIBRARIES)
 
 $(BINDIR)lib$(TARGET).a: $(OBJS) $(EXTRA_DEPS)
 	$(AR) rcs $(BINDIR)lib$(TARGET).a $(OBJS)

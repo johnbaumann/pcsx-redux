@@ -2,7 +2,7 @@
 
 MIT License
 
-Copyright (c) 2022 PCSX-Redux authors
+Copyright (c) 2023 PCSX-Redux authors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,26 +26,12 @@ SOFTWARE.
 
 #pragma once
 
-template <size_t N>
-class psyqo::Font : public psyqo::FontBase {
-  public:
-    virtual ~Font() {}
+#include "psyqo/vector.hh"
 
-  private:
-    virtual GlyphsFragment& getGlyphFragment(bool increment) override {
-        auto& fragment = m_fragments[m_index];
-        if (increment) {
-            if (++m_index == N) {
-                m_index = 0;
-            }
-        }
-        return fragment;
-    }
-    virtual void forEach(eastl::function<void(GlyphsFragment&)>&& cb) override {
-        for (auto& fragment : m_fragments) {
-            cb(fragment);
-        }
-    }
-    eastl::array<GlyphsFragment, N> m_fragments;
-    unsigned m_index = 0;
+namespace psyqo {
+
+struct Matrix33 {
+    Vec3 vs[3];
 };
+
+}  // namespace psyqo
